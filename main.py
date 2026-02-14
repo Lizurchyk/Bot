@@ -2,21 +2,13 @@ import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
 import json
 import os
+from dotenv import load_dotenv
+from aiogram import Bot, Dispatcher
 
-# ============================================
-# ЗАГРУЗКА ТОКЕНА ИЗ .env
-# ============================================
 load_dotenv()
-TOKEN = os.environ.get('BOT_TOKEN')
+TOKEN = os.getenv('BOT_TOKEN')
 
-if not TOKEN:
-    print("❌ ОШИБКА: BOT_TOKEN не найден в .env файле!")
-    print("📌 Создай файл .env и добавь строку: BOT_TOKEN=твой_токен_бота")
-    exit(1)
 
-# ============================================
-# НАСТРОЙКИ (В КОДЕ)
-# ============================================
 ADMIN_ID = 1439379837
 CHANNEL_ID = -1003606116956
 GAMES_JSON_PATH = "games.json"
@@ -79,7 +71,9 @@ GAMES = load_games()
 # ============================================
 # ИНИЦИАЛИЗАЦИЯ БОТА
 # ============================================
-bot = telebot.TeleBot(TOKEN)
+bot = Bot(token=TOKEN)
+dp = Dispatcher(bot)
+#bot = telebot.TeleBot(TOKEN)
 
 # Хранилище состояний
 admin_states = {}
