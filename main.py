@@ -21,7 +21,7 @@ ADMIN_ID = int(os.getenv('ADMIN_ID'))
 CHANNEL_ID = int(os.getenv('CHANNEL_ID')) 
 GAMES_JSON_PATH = "games.json"
 
-CHANNEL = [
+CHANNELS = [
 {
     'type': 'public',               # Тип: публичный
     'id': '@SimpleDLC',              # ❗ ЮЗЕРНЕЙМ для проверки подписки (БЕЗ +)
