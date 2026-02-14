@@ -135,7 +135,7 @@ def game_keyboard(download_link):
 def post_keyboard(bot_username, game_key):
     deep_link = f"https://t.me/{bot_username}?start={game_key}"
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎮 Получить игру", url=deep_link)]
+        [InlineKeyboardButton(text="📥 Скачать в боте", url=deep_link)]
     ])
 
 async def send_game_to_user(chat_id: int, game_key: str):
