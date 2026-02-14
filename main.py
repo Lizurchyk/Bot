@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 # ЗАГРУЗКА ТОКЕНА ИЗ .env
 # ============================================
 load_dotenv()
-TOKEN = os.getenv('BOT_TOKEN')
+TOKEN = os.environ.get('BOT_TOKEN')
 
 if not TOKEN:
     print("❌ ОШИБКА: BOT_TOKEN не найден в .env файле!")
