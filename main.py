@@ -2,7 +2,6 @@ import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
 import json
 import os
-from dotenv import load_dotenv
 
 # ============================================
 # ЗАГРУЗКА ТОКЕНА ИЗ .env
