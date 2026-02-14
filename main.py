@@ -286,7 +286,7 @@ def start(message):
         if game_key:
             SendGameToUser(chat_id, game_key)
         else:
-            bot.send_message(chat_id, "Для установки файла нажми "Скачать", под постом в канале\n\n Канал: @SimpleDLC")
+            bot.send_message(chat_id, "Для установки файла нажми „Скачать“, под постом в канале\n\n Канал: @SimpleDLC")
 
 # ============================================
 # АДМИН КОМАНДЫ
