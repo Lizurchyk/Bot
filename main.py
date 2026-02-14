@@ -10,7 +10,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Токен бота (обязательно)
-TOKEN = API_TOKEN
+TOKEN = os.environ.get('BOT_TOKEN')
+
 if not TOKEN:
     print("❌ ОШИБКА: BOT_TOKEN не найден в переменных окружения!")
     print("📌 Создай файл .env или установи переменную BOT_TOKEN")
