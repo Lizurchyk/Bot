@@ -22,8 +22,8 @@ if not TOKEN:
 # ============================================
 # НАСТРОЙКИ
 # ============================================
-ADMIN_ID = 1439379837
-CHANNEL_ID = -1003606116956
+ADMIN_ID = os.getenv('ADMIN')
+CHANNEL_ID = os.getenv('CHANNEL')
 GAMES_JSON_PATH = "games.json"
 
 CHANNELS = [
