@@ -22,11 +22,12 @@ CHANNEL_ID = int(os.getenv('CHANNEL_ID'))
 GAMES_JSON_PATH = "games.json"
 
 CHANNELS = [
-    {
-        'type': 'private',
-        'id': -1003606116956,
-        'link': 'https://t.me/+wUhQkvhZrcdiZDYy',
-        'name': 'Первый канал'
+{
+        'type': 'public',
+        'id': '@SimpleDLC',  # Username канала
+        'name': 'Все читы',
+        'link': 'https://t.me/+MyUkrVP_q5E3YzM6',  # Ссылка на канал
+     
     },
 ]
 
