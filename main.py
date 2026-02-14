@@ -1,7 +1,12 @@
-import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
+import asyncio
 import json
 import os
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
 from dotenv import load_dotenv
 
 # ============================================
@@ -12,7 +17,6 @@ TOKEN = os.getenv('BOT_TOKEN')
 
 if not TOKEN:
     print("❌ ОШИБКА: BOT_TOKEN не найден в .env файле!")
-    print("📌 Создай файл .env и добавь: BOT_TOKEN=твой_токен")
     exit(1)
 
 # ============================================
@@ -32,6 +36,19 @@ CHANNELS = [
 ]
 
 # ============================================
+# FSM СОСТОЯНИЯ
+# ============================================
+class AddGame(StatesGroup):
+    key = State()
+    name = State()
+    link = State()
+    media = State()
+
+class AdminStates(StatesGroup):
+    waiting_game_key = State()
+    waiting_text = State()
+
+# ============================================
 # ЗАГРУЗКА ИГР ИЗ JSON
 # ============================================
 def load_games():
@@ -39,11 +56,9 @@ def load_games():
         try:
             with open(GAMES_JSON_PATH, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except Exception as e:
-            print(f"❌ Ошибка загрузки JSON: {e}")
+        except:
             return create_default_games()
     else:
-        print("📁 JSON файл не найден, создаю с базовыми играми")
         return create_default_games()
 
 def create_default_games():
@@ -71,8 +86,7 @@ def save_games(games):
         with open(GAMES_JSON_PATH, 'w', encoding='utf-8') as f:
             json.dump(games, f, ensure_ascii=False, indent=4)
         return True
-    except Exception as e:
-        print(f"❌ Ошибка сохранения JSON: {e}")
+    except:
         return False
 
 GAMES = load_games()
@@ -80,55 +94,59 @@ GAMES = load_games()
 # ============================================
 # ИНИЦИАЛИЗАЦИЯ БОТА
 # ============================================
-bot = telebot.TeleBot(TOKEN)
+bot = Bot(token=TOKEN)
+storage = MemoryStorage()
+dp = Dispatcher(storage=storage)
 
-# Хранилище состояний админа
-admin_states = {}
+# Хранилище ожидающих игр для пользователей
 pending_games = {}
 
 # ============================================
 # ФУНКЦИИ
 # ============================================
-def check_sub(user_id):
+async def check_sub(user_id: int):
     unsubscribed = []
     for channel in CHANNELS:
         try:
             if channel['type'] == 'private':
-                member = bot.get_chat_member(channel['id'], user_id)
+                member = await bot.get_chat_member(channel['id'], user_id)
                 if member.status not in ['creator', 'administrator', 'member']:
                     unsubscribed.append(channel)
             elif channel['type'] == 'public':
-                member = bot.get_chat_member(channel['username'], user_id)
+                member = await bot.get_chat_member(channel['username'], user_id)
                 if member.status not in ['creator', 'administrator', 'member']:
                     unsubscribed.append(channel)
-        except Exception as e:
-            print(f"Ошибка проверки канала: {e}")
+        except:
             unsubscribed.append(channel)
     return len(unsubscribed) == 0, unsubscribed
 
 def sub_keyboard(channels):
-    keyboard = InlineKeyboardMarkup(row_width=1)
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
     for ch in channels:
         emoji = "🔐" if ch['type'] == 'private' else "📢"
-        keyboard.add(InlineKeyboardButton(f"{emoji} {ch['name']}", url=ch['link']))
-    keyboard.add(InlineKeyboardButton("✅ Проверить подписки", callback_data="check_subs"))
+        keyboard.inline_keyboard.append([
+            InlineKeyboardButton(text=f"{emoji} {ch['name']}", url=ch['link'])
+        ])
+    keyboard.inline_keyboard.append([
+        InlineKeyboardButton(text="✅ Проверить подписки", callback_data="check_subs")
+    ])
     return keyboard
 
 def game_keyboard(download_link):
-    keyboard = InlineKeyboardMarkup()
-    keyboard.add(InlineKeyboardButton("📥 Скачать", url=download_link))
-    return keyboard
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📥 Скачать", url=download_link)]
+    ])
 
 def post_keyboard(bot_username, game_key):
     deep_link = f"https://t.me/{bot_username}?start={game_key}"
-    keyboard = InlineKeyboardMarkup()
-    keyboard.add(InlineKeyboardButton("🎮 Получить игру", url=deep_link))
-    return keyboard
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎮 Получить игру", url=deep_link)]
+    ])
 
-def send_game_to_user(chat_id, game_key):
+async def send_game_to_user(chat_id: int, game_key: str):
     game = GAMES.get(game_key)
     if not game:
-        bot.send_message(chat_id, "❌ Игра не найдена.")
+        await bot.send_message(chat_id, "❌ Игра не найдена.")
         return False
 
     keyboard = game_keyboard(game['download_link'])
@@ -137,7 +155,7 @@ def send_game_to_user(chat_id, game_key):
     if game.get('media') and game.get('media_type'):
         try:
             if game['media_type'] == 'photo':
-                bot.send_photo(
+                await bot.send_photo(
                     chat_id,
                     game['media'],
                     caption=text,
@@ -145,35 +163,34 @@ def send_game_to_user(chat_id, game_key):
                     reply_markup=keyboard
                 )
             elif game['media_type'] == 'video':
-                bot.send_video(
+                await bot.send_video(
                     chat_id,
                     game['media'],
                     caption=text,
                     parse_mode="Markdown",
                     reply_markup=keyboard
                 )
-        except Exception as e:
-            print(f"Ошибка отправки медиа: {e}")
-            bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=keyboard)
+        except:
+            await bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=keyboard)
     else:
-        bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=keyboard)
+        await bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=keyboard)
     
     return True
 
-def publish_post(chat_id, game_key, text_message, is_test=False):
+async def publish_post(chat_id: int, game_key: str, message: types.Message, is_test: bool = False):
     game = GAMES.get(game_key)
     if not game:
         return False, "Игра не найдена"
 
     target = ADMIN_ID if is_test else CHANNEL_ID
-    bot_username = bot.get_me().username
+    bot_username = (await bot.get_me()).username
     keyboard = post_keyboard(bot_username, game_key)
 
     try:
-        post_text = text_message.text or text_message.caption or ""
+        post_text = message.text or message.caption or ""
         
         if game.get('media') and game.get('media_type') == 'photo':
-            sent = bot.send_photo(
+            sent = await bot.send_photo(
                 target,
                 game['media'],
                 caption=post_text,
@@ -181,33 +198,33 @@ def publish_post(chat_id, game_key, text_message, is_test=False):
                 reply_markup=keyboard
             )
         elif game.get('media') and game.get('media_type') == 'video':
-            sent = bot.send_video(
+            sent = await bot.send_video(
                 target,
                 game['media'],
                 caption=post_text,
                 parse_mode="Markdown",
                 reply_markup=keyboard
             )
-        elif text_message.photo:
-            sent = bot.send_photo(
+        elif message.photo:
+            sent = await bot.send_photo(
                 target,
-                text_message.photo[-1].file_id,
-                caption=text_message.caption,
+                message.photo[-1].file_id,
+                caption=message.caption,
                 parse_mode="Markdown",
                 reply_markup=keyboard
             )
-        elif text_message.video:
-            sent = bot.send_video(
+        elif message.video:
+            sent = await bot.send_video(
                 target,
-                text_message.video.file_id,
-                caption=text_message.caption,
+                message.video.file_id,
+                caption=message.caption,
                 parse_mode="Markdown",
                 reply_markup=keyboard
             )
-        elif text_message.text:
-            sent = bot.send_message(
+        elif message.text:
+            sent = await bot.send_message(
                 target,
-                text_message.text,
+                message.text,
                 parse_mode="Markdown",
                 reply_markup=keyboard
             )
@@ -224,18 +241,18 @@ def publish_post(chat_id, game_key, text_message, is_test=False):
     except Exception as e:
         return False, str(e)
 
-def check_admin_access(message):
+async def check_admin_access(message: types.Message):
     user_id = message.from_user.id
     
     if user_id != ADMIN_ID:
-        bot.reply_to(message, "❌ У вас нет прав администратора")
+        await message.answer("❌ У вас нет прав администратора")
         return False
     
-    is_subscribed, unsubscribed = check_sub(user_id)
+    is_subscribed, unsubscribed = await check_sub(user_id)
     if not is_subscribed:
         keyboard = sub_keyboard(unsubscribed)
         channels_text = "\n".join([f"• {ch['name']}" for ch in unsubscribed])
-        bot.send_message(
+        await bot.send_message(
             message.chat.id,
             f"⚠️ **Вы не подписаны на каналы:**\n\n{channels_text}",
             parse_mode="Markdown",
@@ -248,14 +265,14 @@ def check_admin_access(message):
 # ============================================
 # КОМАНДА /start
 # ============================================
-@bot.message_handler(commands=['start'])
-def start(message):
+@dp.message(Command("start"))
+async def cmd_start(message: types.Message):
     user_id = message.from_user.id
     chat_id = message.chat.id
     args = message.text.split()
     game_key = args[1] if len(args) > 1 else None
 
-    is_subscribed, unsubscribed = check_sub(user_id)
+    is_subscribed, unsubscribed = await check_sub(user_id)
 
     if not is_subscribed:
         keyboard = sub_keyboard(unsubscribed)
@@ -264,92 +281,61 @@ def start(message):
         if game_key:
             pending_games[user_id] = game_key
         
-        bot.send_message(
-            chat_id,
+        await message.answer(
             f"⚠️ **Подпишись на каналы:**\n\n{channels_text}",
             parse_mode="Markdown",
             reply_markup=keyboard
         )
     else:
         if game_key:
-            send_game_to_user(chat_id, game_key)
+            await send_game_to_user(chat_id, game_key)
         else:
-            bot.send_message(chat_id, "Для установки нажми кнопку скачать под постом в канале @SimpleDLC")
+            await message.answer("Для установки нажми кнопку скачать под постом в канале @SimpleDLC")
 
 # ============================================
 # АДМИН КОМАНДЫ
 # ============================================
-@bot.message_handler(commands=['admin'])
-def admin_command(message):
-    if not check_admin_access(message):
+@dp.message(Command("admin"))
+async def cmd_admin(message: types.Message, state: FSMContext):
+    if not await check_admin_access(message):
         return
     
-    admin_states[ADMIN_ID] = {'action': 'waiting_game_key', 'test_mode': False}
-    bot.send_message(
-        ADMIN_ID,
+    await state.set_state(AdminStates.waiting_game_key)
+    await state.update_data(test_mode=False)
+    await message.answer(
         "📝 **Пост в канал**\n\nВведите ключ игры:",
         parse_mode="Markdown",
-        reply_markup=ForceReply(selective=True)
+        reply_markup=ForceReply()
     )
 
-@bot.message_handler(commands=['adminTest'])
-def admin_test(message):
-    if not check_admin_access(message):
+@dp.message(Command("adminTest"))
+async def cmd_admin_test(message: types.Message, state: FSMContext):
+    if not await check_admin_access(message):
         return
     
-    admin_states[ADMIN_ID] = {'action': 'waiting_game_key', 'test_mode': True}
-    bot.send_message(
-        ADMIN_ID,
+    await state.set_state(AdminStates.waiting_game_key)
+    await state.update_data(test_mode=True)
+    await message.answer(
         "🧪 **Тестовый пост**\n\nВведите ключ игры:",
         parse_mode="Markdown",
-        reply_markup=ForceReply(selective=True)
+        reply_markup=ForceReply()
     )
 
-@bot.message_handler(commands=['text'])
-def text_command(message):
-    if message.from_user.id != ADMIN_ID:
+@dp.message(Command("addgame"))
+async def cmd_add_game(message: types.Message, state: FSMContext):
+    if not await check_admin_access(message):
         return
     
-    is_subscribed, _ = check_sub(ADMIN_ID)
-    if not is_subscribed:
-        bot.send_message(ADMIN_ID, "❌ Сначала подпишись на каналы!")
-        return
-    
-    if ADMIN_ID not in admin_states:
-        bot.send_message(ADMIN_ID, "❌ Сначала используй /admin или /adminTest")
-        return
-    
-    state = admin_states[ADMIN_ID]
-    if state.get('action') != 'waiting_text_command':
-        bot.send_message(ADMIN_ID, "❌ Сначала введи ключ игры после /admin или /adminTest")
-        return
-    
-    state['action'] = 'waiting_post_text'
-    bot.send_message(
-        ADMIN_ID,
-        "📤 **Отправь свой пост**\n\n"
-        "Можешь использовать любое форматирование, фото или видео.\n"
-        "После отправки пост сразу уйдет по назначению.",
-        parse_mode="Markdown",
-        reply_markup=ForceReply(selective=True)
-    )
-
-@bot.message_handler(commands=['addgame'])
-def add_game(message):
-    if not check_admin_access(message):
-        return
-    
-    admin_states[ADMIN_ID] = {'action': 'adding_game', 'step': 'key'}
-    bot.send_message(
-        ADMIN_ID,
+    await state.set_state(AddGame.key)
+    await message.answer(
         "➕ **Добавление игры**\n\nВведите ключ (например: game3):",
         parse_mode="Markdown",
-        reply_markup=ForceReply(selective=True)
+        reply_markup=ForceReply()
     )
 
-@bot.message_handler(commands=['games'])
-def list_games(message):
-    if not check_admin_access(message):
+@dp.message(Command("games"))
+async def cmd_list_games(message: types.Message):
+    if not await check_admin_access(message):
         return
     
     text = "**📋 Список игр:**\n\n"
@@ -361,186 +347,175 @@ def list_games(message):
             text += f" - {'📸' if game['media_type'] == 'photo' else '🎬'}"
         text += "\n"
     
-    bot.send_message(ADMIN_ID, text, parse_mode="Markdown")
+    await message.answer(text, parse_mode="Markdown")
 
 # ============================================
-# ОБРАБОТЧИКИ СООБЩЕНИЙ
+# ОБРАБОТЧИК ДЛЯ ВВОДА КЛЮЧА
 # ============================================
-@bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and 
-                     message.from_user.id in admin_states and 
-                     admin_states[ADMIN_ID].get('action') == 'waiting_game_key',
-                     content_types=['text'])
-def handle_game_key(message):
+@dp.message(AdminStates.waiting_game_key, F.text)
+async def process_game_key(message: types.Message, state: FSMContext):
     game_key = message.text.strip()
     
     if game_key not in GAMES:
-        bot.send_message(
-            ADMIN_ID, 
+        await message.answer(
             f"❌ Игра '{game_key}' не найдена!\n\nДоступные игры: {', '.join(GAMES.keys())}"
         )
         return
     
-    state = admin_states[ADMIN_ID]
-    state['game_key'] = game_key
-    state['action'] = 'waiting_text_command'
+    await state.update_data(game_key=game_key)
+    data = await state.get_data()
     
-    bot.send_message(
-        ADMIN_ID,
-        f"✅ Ключ: {game_key}\n\n"
-        f"📝 Теперь отправь команду **/text**",
-        parse_mode="Markdown"
+    if data.get('test_mode') is not None:
+        # Это из /admin или /adminTest - ждем /text
+        await state.set_state(AdminStates.waiting_text)
+        await message.answer(
+            f"✅ Ключ: {game_key}\n\n"
+            f"📝 Теперь отправь команду **/text**",
+            parse_mode="Markdown"
+        )
+
+# ============================================
+# КОМАНДА /text
+# ============================================
+@dp.message(Command("text"))
+async def cmd_text(message: types.Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    current_state = await state.get_state()
+    if current_state != AdminStates.waiting_text.state:
+        await message.answer("❌ Сначала введи ключ игры после /admin или /adminTest")
+        return
+    
+    await state.set_state(AdminStates.waiting_text)
+    await message.answer(
+        "📤 **Отправь свой пост**\n\n"
+        "Можешь использовать любое форматирование, фото или видео.\n"
+        "После отправки пост сразу уйдет по назначению.",
+        parse_mode="Markdown",
+        reply_markup=ForceReply()
     )
 
-@bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and 
-                     message.from_user.id in admin_states and 
-                     admin_states[ADMIN_ID].get('action') == 'waiting_post_text',
-                     content_types=['text', 'photo', 'video'])
-def handle_post_text(message):
-    state = admin_states[ADMIN_ID]
-    game_key = state['game_key']
-    is_test = state.get('test_mode', False)
+# ============================================
+# ОБРАБОТЧИК ДЛЯ ПОЛУЧЕНИЯ ПОСТА
+# ============================================
+@dp.message(AdminStates.waiting_text, F.text | F.photo | F.video)
+async def process_post(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    game_key = data['game_key']
+    is_test = data.get('test_mode', False)
     
-    success, result = publish_post(ADMIN_ID, game_key, message, is_test)
+    success, result = await publish_post(ADMIN_ID, game_key, message, is_test)
     
     if success:
         if is_test:
-            bot.send_message(
-                ADMIN_ID,
-                "✅ **Тестовый пост отправлен!**\nПосмотри выше ↑",
-                parse_mode="Markdown"
-            )
+            await message.answer("✅ **Тестовый пост отправлен!**\nПосмотри выше ↑", parse_mode="Markdown")
         else:
-            bot.send_message(
-                ADMIN_ID,
-                f"✅ **Пост опубликован в канале!**\n🔗 Ссылка: {result}",
-                parse_mode="Markdown"
-            )
+            await message.answer(f"✅ **Пост опубликован в канале!**\n🔗 Ссылка: {result}", parse_mode="Markdown")
     else:
-        bot.send_message(
-            ADMIN_ID,
-            f"❌ Ошибка: {result}"
-        )
+        await message.answer(f"❌ Ошибка: {result}")
     
-    del admin_states[ADMIN_ID]
-
-@bot.message_handler(func=lambda message: message.from_user.id == ADMIN_ID and 
-                     message.from_user.id in admin_states and 
-                     admin_states[ADMIN_ID].get('action') == 'adding_game',
-                     content_types=['text', 'photo', 'video'])
-def handle_add_game(message):
-    state = admin_states[ADMIN_ID]
-    
-    if state['step'] == 'key':
-        if message.text in GAMES:
-            bot.send_message(ADMIN_ID, "❌ Такой ключ уже есть!")
-            return
-        
-        state['game_key'] = message.text
-        state['step'] = 'name'
-        bot.send_message(
-            ADMIN_ID,
-            "Введите **название игры**:",
-            parse_mode="Markdown",
-            reply_markup=ForceReply(selective=True)
-        )
-    
-    elif state['step'] == 'name':
-        state['game_name'] = message.text
-        state['step'] = 'link'
-        bot.send_message(
-            ADMIN_ID,
-            "Введите **ссылку для скачивания**:",
-            parse_mode="Markdown",
-            reply_markup=ForceReply(selective=True)
-        )
-    
-    elif state['step'] == 'link':
-        state['download_link'] = message.text
-        state['step'] = 'media'
-        bot.send_message(
-            ADMIN_ID,
-            "📸 **Отправьте фото для игры**\n\n"
-            "Просто отправьте фото сюда (как обычное сообщение)\n"
-            "Или отправьте 'пропустить' если фото не нужно",
-            parse_mode="Markdown",
-            reply_markup=ForceReply(selective=True)
-        )
-    
-    elif state['step'] == 'media':
-        media_id = None
-        media_type = None
-        
-        if message.photo:
-            media_id = message.photo[-1].file_id
-            media_type = 'photo'
-            bot.send_message(ADMIN_ID, "✅ Фото сохранено!")
-        elif message.video:
-            media_id = message.video.file_id
-            media_type = 'video'
-            bot.send_message(ADMIN_ID, "✅ Видео сохранено!")
-        elif message.text and message.text.lower() == 'пропустить':
-            pass
-        else:
-            bot.send_message(ADMIN_ID, "❌ Отправь фото, видео или 'пропустить'")
-            return
-        
-        GAMES[state['game_key']] = {
-            "name": state['game_name'],
-            "download_link": state['download_link'],
-            "media": media_id,
-            "media_type": media_type,
-            "post_link": None
-        }
-        
-        if save_games(GAMES):
-            bot.send_message(
-                ADMIN_ID,
-                f"✅ **Игра {state['game_key']} добавлена!**\n"
-                f"Название: {state['game_name']}\n"
-                f"Медиа: {'✅' if media_id else '❌'}\n"
-                f"📁 Данные сохранены в games.json",
-                parse_mode="Markdown"
-            )
-        else:
-            bot.send_message(
-                ADMIN_ID,
-                f"⚠️ **Игра добавлена, но ошибка сохранения в JSON**",
-                parse_mode="Markdown"
-            )
-        
-        del admin_states[ADMIN_ID]
+    await state.clear()
 
 # ============================================
-# КНОПКА ПРОВЕРКИ ПОДПИСКИ
+# ДОБАВЛЕНИЕ ИГРЫ
 # ============================================
-@bot.callback_query_handler(func=lambda call: call.data == "check_subs")
-def check_subs_callback(call):
-    user_id = call.from_user.id
-    chat_id = call.message.chat.id
+@dp.message(AddGame.key, F.text)
+async def add_game_key(message: types.Message, state: FSMContext):
+    if message.text in GAMES:
+        await message.answer("❌ Такой ключ уже есть!")
+        return
+    
+    await state.update_data(game_key=message.text)
+    await state.set_state(AddGame.name)
+    await message.answer("Введите **название игры**:", parse_mode="Markdown")
 
-    bot.answer_callback_query(call.id, "🔍 Проверяю...")
-    is_subscribed, unsubscribed = check_sub(user_id)
+@dp.message(AddGame.name, F.text)
+async def add_game_name(message: types.Message, state: FSMContext):
+    await state.update_data(game_name=message.text)
+    await state.set_state(AddGame.link)
+    await message.answer("Введите **ссылку для скачивания**:", parse_mode="Markdown")
+
+@dp.message(AddGame.link, F.text)
+async def add_game_link(message: types.Message, state: FSMContext):
+    await state.update_data(download_link=message.text)
+    await state.set_state(AddGame.media)
+    await message.answer(
+        "📸 **Отправьте фото для игры**\n\n"
+        "Просто отправьте фото сюда (как обычное сообщение)\n"
+        "Или отправьте 'пропустить' если фото не нужно",
+        parse_mode="Markdown"
+    )
+
+@dp.message(AddGame.media, F.photo | F.video | F.text)
+async def add_game_media(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    media_id = None
+    media_type = None
+    
+    if message.photo:
+        media_id = message.photo[-1].file_id
+        media_type = 'photo'
+        await message.answer("✅ Фото сохранено!")
+    elif message.video:
+        media_id = message.video.file_id
+        media_type = 'video'
+        await message.answer("✅ Видео сохранено!")
+    elif message.text and message.text.lower() == 'пропустить':
+        pass
+    else:
+        await message.answer("❌ Отправь фото, видео или 'пропустить'")
+        return
+    
+    GAMES[data['game_key']] = {
+        "name": data['game_name'],
+        "download_link": data['download_link'],
+        "media": media_id,
+        "media_type": media_type,
+        "post_link": None
+    }
+    
+    if save_games(GAMES):
+        await message.answer(
+            f"✅ **Игра {data['game_key']} добавлена!**\n"
+            f"Название: {data['game_name']}\n"
+            f"Медиа: {'✅' if media_id else '❌'}",
+            parse_mode="Markdown"
+        )
+    else:
+        await message.answer("⚠️ **Игра добавлена, но ошибка сохранения в JSON**", parse_mode="Markdown")
+    
+    await state.clear()
+
+# ============================================
+# CALLBACK ДЛЯ ПРОВЕРКИ ПОДПИСКИ
+# ============================================
+@dp.callback_query(lambda c: c.data == "check_subs")
+async def process_check_subs(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    chat_id = callback.message.chat.id
+
+    await callback.answer("🔍 Проверяю...")
+    is_subscribed, unsubscribed = await check_sub(user_id)
 
     if is_subscribed:
         try:
-            bot.delete_message(chat_id, call.message.message_id)
+            await bot.delete_message(chat_id, callback.message.message_id)
         except:
             pass
 
         game_key = pending_games.pop(user_id, None)
 
         if game_key:
-            send_game_to_user(chat_id, game_key)
+            await send_game_to_user(chat_id, game_key)
         else:
-            bot.send_message(chat_id, "✅ Подписка оформлена!")
+            await bot.send_message(chat_id, "✅ Подписка оформлена!")
 
     else:
         keyboard = sub_keyboard(unsubscribed)
         channels_text = "\n".join([f"• {ch['name']}" for ch in unsubscribed])
         try:
-            bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
+            await callback.message.edit_text(
                 text=f"⚠️ **Всё ещё нужно подписаться:**\n\n{channels_text}",
                 parse_mode="Markdown",
                 reply_markup=keyboard
@@ -551,12 +526,13 @@ def check_subs_callback(call):
 # ============================================
 # ЗАПУСК
 # ============================================
-if __name__ == "__main__":
+async def main():
     print("🤖 Бот запущен!")
-    print("🔒 Только токен загружен из .env файла")
     print(f"👤 Admin ID: {ADMIN_ID}")
     print(f"📢 Channel ID: {CHANNEL_ID}")
-    print(f"📁 JSON файл с играми: {GAMES_JSON_PATH}")
     print(f"🎮 Загружено игр: {len(GAMES)}")
     
-    bot.infinity_polling()
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
