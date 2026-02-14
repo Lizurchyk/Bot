@@ -13,17 +13,12 @@ from dotenv import load_dotenv
 # ЗАГРУЗКА ТОКЕНА
 # ============================================
 load_dotenv()
+
 TOKEN = os.getenv('BOT_TOKEN')
 
-if not TOKEN:
-    print("❌ ОШИБКА: BOT_TOKEN не найден в .env файле!")
-    exit(1)
 
-# ============================================
-# НАСТРОЙКИ
-# ============================================
-ADMIN_ID = os.getenv('ADMIN')
-CHANNEL_ID = os.getenv('CHANNEL')
+ADMIN_ID = int(os.getenv('ADMIN_ID')) 
+CHANNEL_ID = int(os.getenv('CHANNEL_ID')) 
 GAMES_JSON_PATH = "games.json"
 
 CHANNELS = [
