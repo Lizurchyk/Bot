@@ -21,14 +21,14 @@ ADMIN_ID = int(os.getenv('ADMIN_ID'))
 CHANNEL_ID = int(os.getenv('CHANNEL_ID')) 
 GAMES_JSON_PATH = "games.json"
 
-CHANNELS = [
+CHANNEL = [
 {
-        'type': 'public',
-        'id': '@SimpleDLC',  # Username канала
-        'name': 'Все читы',
-        'link': 'https://t.me/+MyUkrVP_q5E3YzM6',  # Ссылка на канал
-     
-    },
+    'type': 'public',               # Тип: публичный
+    'id': '@SimpleDLC',              # ❗ ЮЗЕРНЕЙМ для проверки подписки (БЕЗ +)
+    'name': 'SimpleDLC | Читы на игры',
+    'link': 'https://t.me/+MyUkrVP_q5E3YzM6',  # ТВОЯ ССЫЛКА для кнопки
+    'emoji': '📢'
+}
 ]
 
 # ============================================
