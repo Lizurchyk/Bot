@@ -9,26 +9,30 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from dotenv import load_dotenv
 
-# ============================================
-# ЗАГРУЗКА ТОКЕНА
-# ============================================
 load_dotenv()
 
 TOKEN = os.getenv('BOT_TOKEN')
-
-
-ADMIN_ID = int(os.getenv('ADMIN_ID')) 
-CHANNEL_ID = int(os.getenv('CHANNEL_ID')) 
+ADMIN_ID = int(os.getenv('ADMIN_ID'))
+CHANNEL_ID = int(os.getenv('CHANNEL_ID'))
 GAMES_JSON_PATH = "games.json"
 
+bot = Bot(token=TOKEN)
+storage = MemoryStorage()
+dp = Dispatcher(storage=storage)
+
+# ============================================
+# НАСТРОЙКА КАНАЛОВ ДЛЯ ПОДПИСКИ (3 ТИПА)
+# ============================================
 CHANNELS = [
-{
-    'type': 'public',               # Тип: публичный
-    'id': '@SimpleDLC',              # ❗ ЮЗЕРНЕЙМ для проверки подписки (БЕЗ +)
-    'name': 'SimpleDLC | Читы на игры',
-    'link': 'https://t.me/+MyUkrVP_q5E3YzM6',  # ТВОЯ ССЫЛКА для кнопки
-    'emoji': '📢'
-}
+    # ТВОЙ КАНАЛ SimpleDLC
+    {
+        'type': 'public',
+        'username': '@SimpleDLC',
+        'link': 'https://t.me/+MyUkrVP_q5E3YzM6',
+        'name': 'SimpleDLC | Читы на игры',
+        'emoji': '📢'
+    },
+  
 ]
 
 # ============================================
@@ -87,45 +91,52 @@ def save_games(games):
 
 GAMES = load_games()
 
-# ============================================
-# ИНИЦИАЛИЗАЦИЯ БОТА
-# ============================================
-bot = Bot(token=TOKEN)
-storage = MemoryStorage()
-dp = Dispatcher(storage=storage)
-
 # Хранилище ожидающих игр для пользователей
 pending_games = {}
 
 # ============================================
-# ФУНКЦИИ
+# ФУНКЦИИ ПРОВЕРКИ ПОДПИСКИ
 # ============================================
-async def check_sub(user_id: int):
+async def check_subscription(user_id: int):
+    """Проверяет подписку на ВСЕ каналы"""
     unsubscribed = []
+    
     for channel in CHANNELS:
+        if channel['type'] == 'link':
+            continue
+            
         try:
             if channel['type'] == 'private':
                 member = await bot.get_chat_member(channel['id'], user_id)
-                if member.status not in ['creator', 'administrator', 'member']:
-                    unsubscribed.append(channel)
             elif channel['type'] == 'public':
                 member = await bot.get_chat_member(channel['username'], user_id)
-                if member.status not in ['creator', 'administrator', 'member']:
-                    unsubscribed.append(channel)
+            
+            if member.status not in ['creator', 'administrator', 'member']:
+                unsubscribed.append(channel)
         except:
             unsubscribed.append(channel)
+    
     return len(unsubscribed) == 0, unsubscribed
 
-def sub_keyboard(channels):
+def subscription_keyboard(channels):
+    """Создает клавиатуру с кнопками для каналов"""
     keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+    
     for ch in channels:
-        emoji = "🔐" if ch['type'] == 'private' else "📢"
         keyboard.inline_keyboard.append([
-            InlineKeyboardButton(text=f"{emoji} {ch['name']}", url=ch['link'])
+            InlineKeyboardButton(
+                text=f"{ch['emoji']} {ch['name']}",
+                url=ch['link']
+            )
         ])
+    
     keyboard.inline_keyboard.append([
-        InlineKeyboardButton(text="✅ Проверить подписки", callback_data="check_subs")
+        InlineKeyboardButton(
+            text="✅ Проверить подписку",
+            callback_data="check_subs"
+        )
     ])
+    
     return keyboard
 
 def game_keyboard(download_link):
@@ -136,9 +147,12 @@ def game_keyboard(download_link):
 def post_keyboard(bot_username, game_key):
     deep_link = f"https://t.me/{bot_username}?start={game_key}"
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📥 Скачать в боте", url=deep_link)]
+        [InlineKeyboardButton(text="🎮 Получить игру", url=deep_link)]
     ])
 
+# ============================================
+# ОТПРАВКА ИГРЫ ПОЛЬЗОВАТЕЛЮ
+# ============================================
 async def send_game_to_user(chat_id: int, game_key: str):
     game = GAMES.get(game_key)
     if not game:
@@ -173,6 +187,9 @@ async def send_game_to_user(chat_id: int, game_key: str):
     
     return True
 
+# ============================================
+# ПУБЛИКАЦИЯ ПОСТА В КАНАЛ
+# ============================================
 async def publish_post(chat_id: int, game_key: str, message: types.Message, is_test: bool = False):
     game = GAMES.get(game_key)
     if not game:
@@ -237,6 +254,9 @@ async def publish_post(chat_id: int, game_key: str, message: types.Message, is_t
     except Exception as e:
         return False, str(e)
 
+# ============================================
+# ПРОВЕРКА ДОСТУПА АДМИНА
+# ============================================
 async def check_admin_access(message: types.Message):
     user_id = message.from_user.id
     
@@ -244,9 +264,9 @@ async def check_admin_access(message: types.Message):
         await message.answer("❌ У вас нет прав администратора")
         return False
     
-    is_subscribed, unsubscribed = await check_sub(user_id)
+    is_subscribed, unsubscribed = await check_subscription(user_id)
     if not is_subscribed:
-        keyboard = sub_keyboard(unsubscribed)
+        keyboard = subscription_keyboard(unsubscribed)
         channels_text = "\n".join([f"• {ch['name']}" for ch in unsubscribed])
         await bot.send_message(
             message.chat.id,
@@ -268,10 +288,10 @@ async def cmd_start(message: types.Message):
     args = message.text.split()
     game_key = args[1] if len(args) > 1 else None
 
-    is_subscribed, unsubscribed = await check_sub(user_id)
+    is_subscribed, unsubscribed = await check_subscription(user_id)
 
     if not is_subscribed:
-        keyboard = sub_keyboard(unsubscribed)
+        keyboard = subscription_keyboard(unsubscribed)
         channels_text = "\n".join([f"• {ch['name']}" for ch in unsubscribed])
         
         if game_key:
@@ -362,7 +382,6 @@ async def process_game_key(message: types.Message, state: FSMContext):
     data = await state.get_data()
     
     if data.get('test_mode') is not None:
-        # Это из /admin или /adminTest - ждем /text
         await state.set_state(AdminStates.waiting_text)
         await message.answer(
             f"✅ Ключ: {game_key}\n\n"
@@ -484,7 +503,7 @@ async def add_game_media(message: types.Message, state: FSMContext):
     await state.clear()
 
 # ============================================
-# CALLBACK ДЛЯ ПРОВЕРКИ ПОДПИСКИ
+# КНОПКА ПРОВЕРКИ ПОДПИСКИ
 # ============================================
 @dp.callback_query(lambda c: c.data == "check_subs")
 async def process_check_subs(callback: types.CallbackQuery):
@@ -492,7 +511,7 @@ async def process_check_subs(callback: types.CallbackQuery):
     chat_id = callback.message.chat.id
 
     await callback.answer("🔍 Проверяю...")
-    is_subscribed, unsubscribed = await check_sub(user_id)
+    is_subscribed, unsubscribed = await check_subscription(user_id)
 
     if is_subscribed:
         try:
@@ -508,7 +527,7 @@ async def process_check_subs(callback: types.CallbackQuery):
             await bot.send_message(chat_id, "✅ Подписка оформлена!")
 
     else:
-        keyboard = sub_keyboard(unsubscribed)
+        keyboard = subscription_keyboard(unsubscribed)
         channels_text = "\n".join([f"• {ch['name']}" for ch in unsubscribed])
         try:
             await callback.message.edit_text(
@@ -526,6 +545,7 @@ async def main():
     print("🤖 Бот запущен!")
     print(f"👤 Admin ID: {ADMIN_ID}")
     print(f"📢 Channel ID: {CHANNEL_ID}")
+    print(f"📊 Каналов для подписки: {len(CHANNELS)}")
     print(f"🎮 Загружено игр: {len(GAMES)}")
     
     await dp.start_polling(bot)
