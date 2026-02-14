@@ -190,6 +190,9 @@ async def send_game_to_user(chat_id: int, game_key: str):
 # ============================================
 # ПУБЛИКАЦИЯ ПОСТА В КАНАЛ
 # ============================================
+# ============================================
+# АЛЬТЕРНАТИВНАЯ ВЕРСИЯ С ENTITIES
+# ============================================
 async def publish_post(chat_id: int, game_key: str, message: types.Message, is_test: bool = False):
     game = GAMES.get(game_key)
     if not game:
@@ -200,22 +203,20 @@ async def publish_post(chat_id: int, game_key: str, message: types.Message, is_t
     keyboard = post_keyboard(bot_username, game_key)
 
     try:
-        post_text = message.text or message.caption or ""
-        
         if game.get('media') and game.get('media_type') == 'photo':
             sent = await bot.send_photo(
                 target,
                 game['media'],
-                caption=post_text,
-                parse_mode="Markdown",
+                caption=message.caption or message.text or "",
+                caption_entities=message.caption_entities or message.entities,
                 reply_markup=keyboard
             )
         elif game.get('media') and game.get('media_type') == 'video':
             sent = await bot.send_video(
                 target,
                 game['media'],
-                caption=post_text,
-                parse_mode="Markdown",
+                caption=message.caption or message.text or "",
+                caption_entities=message.caption_entities or message.entities,
                 reply_markup=keyboard
             )
         elif message.photo:
@@ -223,7 +224,7 @@ async def publish_post(chat_id: int, game_key: str, message: types.Message, is_t
                 target,
                 message.photo[-1].file_id,
                 caption=message.caption,
-                parse_mode="Markdown",
+                caption_entities=message.caption_entities,
                 reply_markup=keyboard
             )
         elif message.video:
@@ -231,14 +232,14 @@ async def publish_post(chat_id: int, game_key: str, message: types.Message, is_t
                 target,
                 message.video.file_id,
                 caption=message.caption,
-                parse_mode="Markdown",
+                caption_entities=message.caption_entities,
                 reply_markup=keyboard
             )
         elif message.text:
             sent = await bot.send_message(
                 target,
                 message.text,
-                parse_mode="Markdown",
+                entities=message.entities,
                 reply_markup=keyboard
             )
         else:
@@ -253,7 +254,6 @@ async def publish_post(chat_id: int, game_key: str, message: types.Message, is_t
             
     except Exception as e:
         return False, str(e)
-
 # ============================================
 # ПРОВЕРКА ДОСТУПА АДМИНА
 # ============================================
