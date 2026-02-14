@@ -10,18 +10,24 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Токен бота (обязательно)
-TOKEN = os.environ.get('BOT_TOKEN')
+TOKEN = os.getenv('BOT_TOKEN')  # Используем getenv вместо environ.get
 
 if not TOKEN:
     print("❌ ОШИБКА: BOT_TOKEN не найден в переменных окружения!")
     print("📌 Создай файл .env или установи переменную BOT_TOKEN")
     exit(1)
 
-# ID админа (можно из .env или оставить в коде)
-ADMIN_ID = int(os.getenv('ADMIN_ID', '1439379837'))  # Значение по умолчанию
+# ID админа
+try:
+    ADMIN_ID = int(os.getenv('ADMIN_ID', '1439379837'))
+except:
+    ADMIN_ID = 1439379837
 
-# ID канала (можно из .env или оставить в коде)
-CHANNEL_ID = int(os.getenv('CHANNEL_ID', '-1003606116956'))
+# ID канала
+try:
+    CHANNEL_ID = int(os.getenv('CHANNEL_ID', '-1003606116956'))
+except:
+    CHANNEL_ID = -1003606116956
 
 # ============================================
 # ПУТЬ К JSON ФАЙЛУ С ИГРАМИ
@@ -36,8 +42,8 @@ def load_games():
         try:
             with open(GAMES_JSON_PATH, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except:
-            print("❌ Ошибка загрузки JSON, создаю новый файл")
+        except Exception as e:
+            print(f"❌ Ошибка загрузки JSON: {e}")
             return create_default_games()
     else:
         print("📁 JSON файл не найден, создаю с базовыми играми")
@@ -72,6 +78,7 @@ def save_games(games):
         print(f"❌ Ошибка сохранения JSON: {e}")
         return False
 
+# Загружаем игры
 GAMES = load_games()
 
 # ============================================
@@ -86,10 +93,12 @@ CHANNELS = [
     },
 ]
 
+# ============================================
+# ИНИЦИАЛИЗАЦИЯ БОТА
+# ============================================
 bot = telebot.TeleBot(TOKEN)
 
-# ... (весь остальной код бота без изменений) ...
-
+# Хранилище состояний
 admin_states = {}
 pending_games = {}
 
@@ -108,7 +117,8 @@ def CheckSub(user_id):
                 member = bot.get_chat_member(channel['username'], user_id)
                 if member.status not in ['creator', 'administrator', 'member']:
                     unsubscribed.append(channel)
-        except:
+        except Exception as e:
+            print(f"Ошибка проверки канала: {e}")
             unsubscribed.append(channel)
     return len(unsubscribed) == 0, unsubscribed
 
@@ -132,7 +142,7 @@ def SendGameToUser(chat_id, game_key):
     keyboard = InlineKeyboardMarkup()
     keyboard.add(InlineKeyboardButton("📥 Скачать", url=game['download_link']))
     
-    text = f"**{game['name']}**:"
+    text = f"**{game['name']}**"
     
     if game.get('media') and game.get('media_type'):
         try:
@@ -161,7 +171,7 @@ def SendGameToUser(chat_id, game_key):
     return True
 
 # ============================================
-# ПУБЛИКАЦИЯ ПОСТА (С ФОТО ИЗ GAMES)
+# ПУБЛИКАЦИЯ ПОСТА
 # ============================================
 def PublishPost(chat_id, game_key, text_message, is_test=False):
     game = GAMES.get(game_key)
@@ -283,7 +293,7 @@ def start(message):
         if game_key:
             SendGameToUser(chat_id, game_key)
         else:
-            bot.send_message(chat_id, "Для установки файла нажми „Скачать“, под постом в канале\n\n Канал: @SimpleDLC")
+            bot.send_message(chat_id, "👋 Добро пожаловать!")
 
 # ============================================
 # АДМИН КОМАНДЫ
