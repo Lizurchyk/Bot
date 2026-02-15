@@ -30,7 +30,14 @@ CHANNELS = [
         'username': '@SimpleDLC',
         'link': 'https://t.me/+MyUkrVP_q5E3YzM6',
         'name': 'SimpleDLC | Читы на игры',
-        'emoji': '📢'
+        'emoji': ''
+    },
+    {
+        'type': 'public',
+        'username': '@SigmaAPK',
+        'link': 'https://t.me/+TNKOjSyKCtg5M2Jh',
+        'name': 'Sigma.APK - Игры и Приложения',
+        'emoji': ''
     },
   
 ]
