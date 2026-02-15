@@ -14,7 +14,7 @@ load_dotenv()
 TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = int(os.getenv('ADMIN_ID'))
 CHANNEL_ID = int(os.getenv('CHANNEL_ID'))
-GAMES_JSON_PATH = "games.json"
+GAMES_JSON_PATH = "/app/games.json"
 
 bot = Bot(token=TOKEN)
 storage = MemoryStorage()
