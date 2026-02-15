@@ -4,14 +4,21 @@
         "download_link": "https://go.linkify.ru/2G06",
         "media": "https://androidprog.com/wp-content/uploads/2023/04/standleo.webp",
         "media_type": "photo",
-        "post_link": "https://t.me/ClickerDropBot?start=leo"
+        "post_link": "https://t.me/AKKV2_bot?start=leo"
     },
-"chillow": {
-        "name": "StandChillow",
-        "download_link": "https://go.linkify.ru/2G06",
-        "media": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSudvIrh_-rEUazN8IwpIkzjgCjDDE2VyZZsuXwWTQKf1Zknfc5tGMPvmQ&s=10",
+    "chillow": {
+        "name": "StandChillow 1.6",
+        "download_link": "https://go.linkify.ru/2GAP",
+        "media": "https://i.ibb.co/1kV17kS/IMG-20260214-215946-567.jpg",
         "media_type": "photo",
-        "post_link": "https://go.linkify.ru/2FxS"
+        "post_link": "https://t.me/AKKV2_bot?start=chillow"
     }
+    "Counterflame": {
+        "name": "Counter Flame 1.1",
+        "download_link": "https://go.linkify.ru/2GBb",
+        "media": "https://i.ibb.co/bMD08386/image-6.jpg",
+        "media_type": "photo",
+        "post_link": "https://t.me/AKKV2_bot?start=Counterflame"
+    }
+    
 }
-
