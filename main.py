@@ -14,7 +14,6 @@ load_dotenv()
 TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = int(os.getenv('ADMIN_ID'))
 CHANNEL_ID = int(os.getenv('CHANNEL_ID'))
-GAMES_JSON_PATH = "/app/games.json"
 
 bot = Bot(token=TOKEN)
 storage = MemoryStorage()
@@ -30,16 +29,15 @@ CHANNELS = [
         'username': '@SimpleDLC',
         'link': 'https://t.me/+MyUkrVP_q5E3YzM6',
         'name': 'SimpleDLC | Читы на игры',
-        'emoji': ''
+        'emoji': '📢'
     },
     {
         'type': 'public',
         'username': '@SigmaAPK',
         'link': 'https://t.me/+TNKOjSyKCtg5M2Jh',
         'name': 'Sigma.APK - Игры и Приложения',
-        'emoji': ''
+        'emoji': '📢'
     },
-  
 ]
 
 # ============================================
@@ -56,47 +54,87 @@ class AdminStates(StatesGroup):
     waiting_text = State()
 
 # ============================================
-# ЗАГРУЗКА ИГР ИЗ JSON
+# ФУНКЦИЯ ПОИСКА games.json ПО ВСЕЙ ПАМЯТИ
+# ============================================
+def find_games_json():
+    """Ищет файл games.json во всей доступной файловой системе"""
+    
+    # Список возможных путей для поиска
+    search_paths = [
+        '/app/games.json',              # Путь на хостинге
+        '/home/games.json',              # Домашняя директория
+        '/root/games.json',               # Root директория
+        './games.json',                    # Текущая папка
+        '../games.json',                   # Папка выше
+        '/var/www/games.json',             # Веб-сервер
+        '/usr/src/app/games.json',         # Docker контейнер
+        os.path.join(os.path.dirname(__file__), 'games.json'),  # Папка со скриптом
+        os.path.join(os.getcwd(), 'games.json'),  # Текущая рабочая папка
+    ]
+    
+    # Добавляем путь из переменной окружения если есть
+    env_path = os.getenv('GAMES_JSON_PATH')
+    if env_path:
+        search_paths.insert(0, env_path)
+    
+    # Ищем файл
+    for path in search_paths:
+        try:
+            if os.path.exists(path):
+                print(f"✅ games.json найден по пути: {path}")
+                return path
+        except:
+            continue
+    
+    # Если не нашли, ищем рекурсивно по всей файловой системе
+    print("🔍 Файл не найден в стандартных путях, ищу рекурсивно...")
+    
+    # Папки для рекурсивного поиска
+    root_dirs = ['/app', '/home', '/root', '/var', '/usr']
+    
+    for root_dir in root_dirs:
+        if os.path.exists(root_dir):
+            for dirpath, dirnames, filenames in os.walk(root_dir, followlinks=False):
+                if 'games.json' in filenames:
+                    found_path = os.path.join(dirpath, 'games.json')
+                    print(f"✅ games.json найден по пути: {found_path}")
+                    return found_path
+                # Ограничиваем глубину поиска
+                if dirpath.count(os.sep) > 5:
+                    del dirnames[:]
+    
+    print("❌ games.json не найден нигде!")
+    return None
+
+# ============================================
+# ЗАГРУЗКА ИГР ИЗ JSON (ТОЛЬКО ЧТЕНИЕ)
 # ============================================
 def load_games():
-    if os.path.exists(GAMES_JSON_PATH):
+    """Только читает games.json, ничего не записывает"""
+    
+    # Находим путь к файлу
+    json_path = find_games_json()
+    
+    if json_path and os.path.exists(json_path):
         try:
-            with open(GAMES_JSON_PATH, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
-            return create_default_games()
+            with open(json_path, 'r', encoding='utf-8') as f:
+                games = json.load(f)
+                print(f"✅ Загружено {len(games)} игр из {json_path}")
+                return games
+        except Exception as e:
+            print(f"❌ Ошибка загрузки JSON: {e}")
+            return {}
     else:
-        return create_default_games()
+        print("❌ Файл games.json не найден!")
+        return {}
 
-def create_default_games():
-    default_games = {
-        "game1": {
-            "name": "Название игры 1",
-            "download_link": "https://example.com/game1.apk",
-            "media": None,
-            "media_type": None,
-            "post_link": None
-        },
-        "game2": {
-            "name": "Название игры 2",
-            "download_link": "https://example.com/game2.apk",
-            "media": None,
-            "media_type": None,
-            "post_link": None
-        }
-    }
-    save_games(default_games)
-    return default_games
-
-def save_games(games):
-    try:
-        with open(GAMES_JSON_PATH, 'w', encoding='utf-8') as f:
-            json.dump(games, f, ensure_ascii=False, indent=4)
-        return True
-    except:
-        return False
-
+# Загружаем игры (только чтение)
 GAMES = load_games()
+
+# Пустая функция сохранения (ничего не делает)
+def save_games(games):
+    """Заглушка - ничего не сохраняет"""
+    return True
 
 # Хранилище ожидающих игр для пользователей
 pending_games = {}
@@ -197,9 +235,6 @@ async def send_game_to_user(chat_id: int, game_key: str):
 # ============================================
 # ПУБЛИКАЦИЯ ПОСТА В КАНАЛ
 # ============================================
-# ============================================
-# АЛЬТЕРНАТИВНАЯ ВЕРСИЯ С ENTITIES
-# ============================================
 async def publish_post(chat_id: int, game_key: str, message: types.Message, is_test: bool = False):
     game = GAMES.get(game_key)
     if not game:
@@ -254,13 +289,13 @@ async def publish_post(chat_id: int, game_key: str, message: types.Message, is_t
         
         if not is_test:
             post_link = f"https://t.me/c/{str(CHANNEL_ID).replace('-100', '')}/{sent.message_id}"
-            game['post_link'] = post_link
-            save_games(GAMES)
+            # НЕ сохраняем в games.json, просто возвращаем ссылку
             return True, post_link
         return True, "Тест отправлен"
             
     except Exception as e:
         return False, str(e)
+
 # ============================================
 # ПРОВЕРКА ДОСТУПА АДМИНА
 # ============================================
@@ -344,24 +379,23 @@ async def cmd_admin_test(message: types.Message, state: FSMContext):
         reply_markup=ForceReply()
     )
 
+# ============================================
+# КОМАНДА /addgame (ОТКЛЮЧЕНА - ТОЛЬКО ЧТЕНИЕ)
+# ============================================
 @dp.message(Command("addgame"))
 async def cmd_add_game(message: types.Message, state: FSMContext):
-    if not await check_admin_access(message):
-        return
-    
-    await state.set_state(AddGame.key)
-    await message.answer(
-        "➕ **Добавление игры**\n\nВведите ключ (например: game3):",
-        parse_mode="Markdown",
-        reply_markup=ForceReply()
-    )
+    await message.answer("❌ Режим только для чтения. Добавление игр отключено.")
 
 @dp.message(Command("games"))
 async def cmd_list_games(message: types.Message):
     if not await check_admin_access(message):
         return
     
-    text = "**📋 Список игр:**\n\n"
+    if not GAMES:
+        await message.answer("📭 База данных игр пуста или не найдена.")
+        return
+    
+    text = "**📋 Список игр (только чтение):**\n\n"
     for key, game in GAMES.items():
         text += f"• `{key}` - {game['name']}"
         if game.get('post_link'):
@@ -440,76 +474,6 @@ async def process_post(message: types.Message, state: FSMContext):
     await state.clear()
 
 # ============================================
-# ДОБАВЛЕНИЕ ИГРЫ
-# ============================================
-@dp.message(AddGame.key, F.text)
-async def add_game_key(message: types.Message, state: FSMContext):
-    if message.text in GAMES:
-        await message.answer("❌ Такой ключ уже есть!")
-        return
-    
-    await state.update_data(game_key=message.text)
-    await state.set_state(AddGame.name)
-    await message.answer("Введите **название игры**:", parse_mode="Markdown")
-
-@dp.message(AddGame.name, F.text)
-async def add_game_name(message: types.Message, state: FSMContext):
-    await state.update_data(game_name=message.text)
-    await state.set_state(AddGame.link)
-    await message.answer("Введите **ссылку для скачивания**:", parse_mode="Markdown")
-
-@dp.message(AddGame.link, F.text)
-async def add_game_link(message: types.Message, state: FSMContext):
-    await state.update_data(download_link=message.text)
-    await state.set_state(AddGame.media)
-    await message.answer(
-        "📸 **Отправьте фото для игры**\n\n"
-        "Просто отправьте фото сюда (как обычное сообщение)\n"
-        "Или отправьте 'пропустить' если фото не нужно",
-        parse_mode="Markdown"
-    )
-
-@dp.message(AddGame.media, F.photo | F.video | F.text)
-async def add_game_media(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    media_id = None
-    media_type = None
-    
-    if message.photo:
-        media_id = message.photo[-1].file_id
-        media_type = 'photo'
-        await message.answer("✅ Фото сохранено!")
-    elif message.video:
-        media_id = message.video.file_id
-        media_type = 'video'
-        await message.answer("✅ Видео сохранено!")
-    elif message.text and message.text.lower() == 'пропустить':
-        pass
-    else:
-        await message.answer("❌ Отправь фото, видео или 'пропустить'")
-        return
-    
-    GAMES[data['game_key']] = {
-        "name": data['game_name'],
-        "download_link": data['download_link'],
-        "media": media_id,
-        "media_type": media_type,
-        "post_link": None
-    }
-    
-    if save_games(GAMES):
-        await message.answer(
-            f"✅ **Игра {data['game_key']} добавлена!**\n"
-            f"Название: {data['game_name']}\n"
-            f"Медиа: {'✅' if media_id else '❌'}",
-            parse_mode="Markdown"
-        )
-    else:
-        await message.answer("⚠️ **Игра добавлена, но ошибка сохранения в JSON**", parse_mode="Markdown")
-    
-    await state.clear()
-
-# ============================================
 # КНОПКА ПРОВЕРКИ ПОДПИСКИ
 # ============================================
 @dp.callback_query(lambda c: c.data == "check_subs")
@@ -549,11 +513,14 @@ async def process_check_subs(callback: types.CallbackQuery):
 # ЗАПУСК
 # ============================================
 async def main():
+    print("=" * 50)
     print("🤖 Бот запущен!")
     print(f"👤 Admin ID: {ADMIN_ID}")
     print(f"📢 Channel ID: {CHANNEL_ID}")
     print(f"📊 Каналов для подписки: {len(CHANNELS)}")
     print(f"🎮 Загружено игр: {len(GAMES)}")
+    print("📁 Режим: ТОЛЬКО ЧТЕНИЕ (запись в JSON отключена)")
+    print("=" * 50)
     
     await dp.start_polling(bot)
 
